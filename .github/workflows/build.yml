@@ -63,9 +63,7 @@ jobs:
 
       - name: Install sing-box
         run: |
-          wget https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-1.9.3-linux-amd64.tar.gz
-          tar -xzf sing-box-1.9.3-linux-amd64.tar.gz
-          sudo install sing-box-*-linux-amd64/sing-box /usr/local/bin/
+          curl -fsSL https://sing-box.app/install.sh | sh
           sing-box version
 
       - name: Get and add domain lists
