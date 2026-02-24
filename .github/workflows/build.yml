@@ -111,9 +111,10 @@ jobs:
         run: |
           mkdir -p ./publish/srs
           
-          cat ./community/data/*.txt ./community/data-ru/*.txt > ./all-domains.txt
-          cat ./all-domains.txt | grep -v '^include:' | grep -v '^#' | sort -u > ./clean-domains.txt
+          find ./community/data -name "*.txt" -exec cat {} + 2>/dev/null | grep -v '^include:' | grep -v '^#' > ./all-domains.txt || touch ./all-domains.txt
+          find ./community/data-ru -name "*.txt" -exec cat {} + 2>/dev/null | grep -v '^include:' | grep -v '^#' >> ./all-domains.txt
           
+          cat ./all-domains.txt | sort -u > ./clean-domains.txt
           split -l 20000 -d ./clean-domains.txt ./publish/srs/russia_part_
           for file in ./publish/srs/russia_part_*; do
             mv "$file" "${file}.srs"
