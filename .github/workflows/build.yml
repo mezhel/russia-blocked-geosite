@@ -122,24 +122,18 @@ jobs:
           cd custom || exit 1
           for srs_file in ../publish/srs/*.srs; do
             base=$(basename "$srs_file")
-            cat > "../publish/srs/${base}.json" << EOF
-          {
-            "version": 3,
-            "rules": [{
-              "domain": [
-EOF
-            sed 's/^/        "/; s/$/",/' "$srs_file" | sed '$ s/,$//' >> "../publish/srs/${base}.json"
-            cat >> "../publish/srs/${base}.json" << EOF
-              ]
-            }]
-          }
-EOF
-            go run ./rule-set compile "../publish/srs/${base}.json" -o "$srs_file"
+            
+            awk 'BEGIN{print "{"); print "  \"version\": 3,"; print "  \"rules\": ["; print "    {"; print "      \"domain\": ["} 
+            END{print "      ]"; print "    }"; print "  ]"; print "}"}' "$srs_file" > "../publish/srs/${base}.json"
+            
+            sed "s/^/        \"/; s/$/\",/" "$srs_file" | sed '$ s/,$//' >> "../publish/srs/${base}.json"
+            ./rule-set compile "../publish/srs/${base}.json" -o "$srs_file"
             rm "../publish/srs/${base}.json"
           done
           
           echo "SRS files created:"
-          ls -lh ./publish/srs/*.srs
+          ls -lh ../publish/srs/*.srs
+
 
       - name: Move and zip files and generate sha256 hash
         run: |
