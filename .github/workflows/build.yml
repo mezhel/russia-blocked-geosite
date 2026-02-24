@@ -112,68 +112,6 @@ jobs:
           go run ./ --exportlists=  --datname=geosite-ru-only.dat --togfwlist=ru-blocked --datapath=../community/data-ru
           go run ./ --exportlists=category-ads-all,google,youtube,discord,ru-blocked,ru-blocked-all,private --datapath=../community/data
 
-      - name: Build SRS files
-        run: |
-          mkdir -p ./publish/srs
-          
-          generate_srs_from_txt() {
-            local txt_file="$1"
-            local srs_name="${2:-$(basename "$txt_file" .txt)}"
-            
-            if [ ! -s "$txt_file" ]; then
-              echo "Skipping $txt_file - empty or missing"
-              return
-            fi
-            
-            echo "Generating SRS from $txt_file -> ${srs_name}_part*.srs"
-            
-            split -l 20000 "$txt_file" "/tmp/${srs_name}_part_"
-            
-            for part in /tmp/${srs_name}_part_*; do
-              part_num=${part##*_part_}
-              
-              # Создаем JSON rule-set
-              {
-                echo '{'
-                echo '  "version": 3,'
-                echo '  "rules": ['
-                echo '    {'
-                echo '      "domain": ['
-                sed 's/^/        "/; s/$/"/' "$part" | sed '$ s/,$//' | sed ':a; N; $!ba; s/"/",/g' | sed '$ s/,$//'
-                echo '      ]'
-                echo '    }'
-                echo '  ]'
-                echo '}'
-              } > "/tmp/${srs_name}_part${part_num}.json"
-              
-              sing-box rule-set compile "/tmp/${srs_name}_part${part_num}.json" -o "/tmp/${srs_name}_part${part_num}.srs"
-              mv "/tmp/${srs_name}_part${part_num}.srs" "./publish/srs/"
-              rm "/tmp/${srs_name}_part${part_num}.json" "$part"
-            done
-          }
-          
-          cd ./publish
-          
-          for txt in *.txt; do
-            generate_srs_from_txt "$txt" "${txt%.txt}"
-          done
-          
-          cd ../community/data
-          for txt in *.txt; do
-            cp "$txt" "../../publish/"
-            generate_srs_from_txt "../../publish/$txt" "${txt%.txt}"
-          done
-          
-          # Ru-only
-          cd ../data-ru
-          for txt in *.txt; do
-            cp "$txt" "../../publish/"
-            generate_srs_from_txt "../../publish/$txt" "${txt%.txt}"
-          done
-          
-          echo "SRS files generated:"
-          find ../publish/srs -name "*.srs" -ls
-
       - name: Move and zip files and generate sha256 hash
         run: |
           install -Dp ./custom/publish/geosite-ru-only.dat ./publish/geosite-ru-only.dat
@@ -181,9 +119,52 @@ jobs:
           install -p {antifilter-download,antifilter-download-community,refilter,win-spy,win-update,win-extra}.txt ./publish/
           install -p ./custom/publish/{ru-blocked,ru-blocked-all,discord,youtube,google,private,category-ads-all}.txt ./publish/
 
-          cp -r ./publish/srs ./publish/  
           (cd ./publish && sha256sum geosite.dat > geosite.dat.sha256sum)
-          (cd ./publish/srs && sha256sum *.srs > sha256sum.txt)
+
+      - name: Build SRS files
+        run: |
+          cd ./publish || exit 1
+          
+          generate_srs_from_txt() {
+            local txt_name="$1"
+            local txt_file="${txt_name}.txt"
+            
+            if [ ! -s "$txt_file" ]; then return; fi
+            
+            grep -v '^$' "$txt_file" | 
+            sed 's/^domain: *//;s/^full: *//' | 
+            sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/ /g' > "/tmp/${txt_name}_clean.txt"
+            
+            split -l 20000 "/tmp/${txt_name}_clean.txt" "/tmp/${txt_name}_part_"
+            rm "/tmp/${txt_name}_clean.txt"
+            
+            local srs_dir="srs/$txt_name"
+            mkdir -p "$srs_dir"
+            
+            for part in /tmp/${txt_name}_part_*; do
+              num=${part##*_part_}
+              
+              {
+                echo '{'
+                echo '  "version": 3,'
+                echo '  "rules": ['
+                echo '    {'
+                echo '      "domain": ['
+                sed 's/^/        "/;s/$/",/' "$part" | sed '$ s/,$//'
+                echo '      ]'
+                echo '    }'
+                echo '  ]'
+                echo '}'
+              } > "/tmp/${txt_name}_part${num}.json"
+              
+              sing-box rule-set compile "/tmp/${txt_name}_part${num}.json" -o "${srs_dir}/${txt_name}_part${num}.srs"
+              rm "/tmp/${txt_name}_part${num}.json" "$part"
+            done
+          }
+          
+          for txt in *.txt; do
+            [ -s "$txt" ] && generate_srs_from_txt "${txt%.txt}"
+          done
 
       - name: Release and upload assets
         uses: svenstaro/upload-release-action@v2
