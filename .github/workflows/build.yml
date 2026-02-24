@@ -61,6 +61,13 @@ jobs:
           go-version-file: ./custom/go.mod
           cache-dependency-path: ./custom/go.sum
 
+      - name: Install sing-box
+        run: |
+          wget https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-1.9.3-linux-amd64.tar.gz
+          tar -xzf sing-box-1.9.3-linux-amd64.tar.gz
+          sudo install sing-box-*-linux-amd64/sing-box /usr/local/bin/
+          sing-box version
+
       - name: Get and add domain lists
         run: |          
           curl -sSL $ANTIFILTER_DOWNLOAD > ./antifilter-download.txt
@@ -107,34 +114,67 @@ jobs:
           go run ./ --exportlists=  --datname=geosite-ru-only.dat --togfwlist=ru-blocked --datapath=../community/data-ru
           go run ./ --exportlists=category-ads-all,google,youtube,discord,ru-blocked,ru-blocked-all,private --datapath=../community/data
 
-      - name: Build SLS files
+      - name: Build SRS files
         run: |
           mkdir -p ./publish/srs
           
-          find ./community/data -name "*.txt" -exec cat {} + 2>/dev/null | grep -v '^include:' | grep -v '^#' > ./all-domains.txt || touch ./all-domains.txt
-          find ./community/data-ru -name "*.txt" -exec cat {} + 2>/dev/null | grep -v '^include:' | grep -v '^#' >> ./all-domains.txt
+          generate_srs_from_txt() {
+            local txt_file="$1"
+            local srs_name="${2:-$(basename "$txt_file" .txt)}"
+            
+            if [ ! -s "$txt_file" ]; then
+              echo "Skipping $txt_file - empty or missing"
+              return
+            fi
+            
+            echo "Generating SRS from $txt_file -> ${srs_name}_part*.srs"
+            
+            split -l 20000 "$txt_file" "/tmp/${srs_name}_part_"
+            
+            for part in /tmp/${srs_name}_part_*; do
+              part_num=${part##*_part_}
+              
+              # Создаем JSON rule-set
+              {
+                echo '{'
+                echo '  "version": 3,'
+                echo '  "rules": ['
+                echo '    {'
+                echo '      "domain": ['
+                sed 's/^/        "/; s/$/"/' "$part" | sed '$ s/,$//' | sed ':a; N; $!ba; s/"/",/g' | sed '$ s/,$//'
+                echo '      ]'
+                echo '    }'
+                echo '  ]'
+                echo '}'
+              } > "/tmp/${srs_name}_part${part_num}.json"
+              
+              sing-box rule-set compile "/tmp/${srs_name}_part${part_num}.json" -o "/tmp/${srs_name}_part${part_num}.srs"
+              mv "/tmp/${srs_name}_part${part_num}.srs" "./publish/srs/"
+              rm "/tmp/${srs_name}_part${part_num}.json" "$part"
+            done
+          }
           
-          cat ./all-domains.txt | sort -u > ./clean-domains.txt
-          split -l 20000 -d ./clean-domains.txt ./publish/srs/russia_part_
-          for file in ./publish/srs/russia_part_*; do
-            mv "$file" "${file}.srs"
+          cd ./publish
+          
+          for txt in *.txt; do
+            generate_srs_from_txt "$txt" "${txt%.txt}"
           done
           
-          cd custom || exit 1
-          for srs_file in ../publish/srs/*.srs; do
-            base=$(basename "$srs_file")
-            
-            awk 'BEGIN{print "{"); print "  \"version\": 3,"; print "  \"rules\": ["; print "    {"; print "      \"domain\": ["} 
-            END{print "      ]"; print "    }"; print "  ]"; print "}"}' "$srs_file" > "../publish/srs/${base}.json"
-            
-            sed "s/^/        \"/; s/$/\",/" "$srs_file" | sed '$ s/,$//' >> "../publish/srs/${base}.json"
-            ./rule-set compile "../publish/srs/${base}.json" -o "$srs_file"
-            rm "../publish/srs/${base}.json"
+          cd ../community/data
+          for txt in *.txt; do
+            cp "$txt" "../../publish/"
+            generate_srs_from_txt "../../publish/$txt" "${txt%.txt}"
           done
           
-          echo "SRS files created:"
-          ls -lh ../publish/srs/*.srs
-
+          # Ru-only
+          cd ../data-ru
+          for txt in *.txt; do
+            cp "$txt" "../../publish/"
+            generate_srs_from_txt "../../publish/$txt" "${txt%.txt}"
+          done
+          
+          echo "SRS files generated:"
+          find ../publish/srs -name "*.srs" -ls
 
       - name: Move and zip files and generate sha256 hash
         run: |
