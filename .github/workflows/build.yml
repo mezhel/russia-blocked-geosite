@@ -175,9 +175,9 @@ jobs:
                 ((part_num++))
               done
             else
-              rm "/tmp/${txt_name}_clean.txt"
+              mv "${srs_dir}/${txt_name}_full.srs" "${srs_dir}/${txt_name}.srs"
+              rm "/tmp/${txt_name}_clean.txt" "/tmp/${txt_name}_full.json"
             fi
-            rm "/tmp/${txt_name}_full.json"
             
             sha256sum "${srs_dir}"/*.srs > "${srs_dir}/${txt_name}.sha256sum"
           }
