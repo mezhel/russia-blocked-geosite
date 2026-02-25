@@ -175,7 +175,6 @@ jobs:
                 ((part_num++))
               done
             else
-              rm "/tmp/${txt_name}_full.json"
               mv "${srs_dir}/${txt_name}_full.srs" "${srs_dir}/${txt_name}.srs"
               rm "/tmp/${txt_name}_clean.txt" "/tmp/${txt_name}_full.json"
             fi
