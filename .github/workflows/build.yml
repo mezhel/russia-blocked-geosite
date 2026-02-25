@@ -131,6 +131,8 @@ jobs:
             sed 's/^domain: *//;s/^full: *//' | 
             sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/ /g' > "/tmp/${txt_name}_clean.txt"
             
+            local line_count=$(wc -l < "/tmp/${txt_name}_clean.txt")
+            
             local srs_dir="srs/$txt_name"
             mkdir -p "$srs_dir"
             
@@ -149,28 +151,32 @@ jobs:
             
             sing-box rule-set compile "/tmp/${txt_name}_full.json" -o "${srs_dir}/${txt_name}_full.srs"
             
-            split -l 40000 "/tmp/${txt_name}_clean.txt" "/tmp/${txt_name}_part_"
-            rm "/tmp/${txt_name}_clean.txt"
-            
-            local part_num=1
-            for part in /tmp/${txt_name}_part_*; do
-              {
-                echo '{'
-                echo '  "version": 3,'
-                echo '  "rules": ['
-                echo '    {'
-                echo '      "domain": ['
-                sed 's/^/        "/;s/$/",/' "$part" | sed '$ s/,$//'
-                echo '      ]'
-                echo '    }'
-                echo '  ]'
-                echo '}'
-              } > "/tmp/${txt_name}_part${part_num}.json"
+            if [ "$line_count" -gt 40000 ]; then
+              split -l 40000 "/tmp/${txt_name}_clean.txt" "/tmp/${txt_name}_part_"
+              rm "/tmp/${txt_name}_clean.txt"
               
-              sing-box rule-set compile "/tmp/${txt_name}_part${part_num}.json" -o "${srs_dir}/${txt_name}_part${part_num}.srs"
-              rm "/tmp/${txt_name}_part${part_num}.json" "$part"
-              ((part_num++))
-            done
+              local part_num=1
+              for part in /tmp/${txt_name}_part_*; do
+                {
+                  echo '{'
+                  echo '  "version": 3,'
+                  echo '  "rules": ['
+                  echo '    {'
+                  echo '      "domain": ['
+                  sed 's/^/        "/;s/$/",/' "$part" | sed '$ s/,$//'
+                  echo '      ]'
+                  echo '    }'
+                  echo '  ]'
+                  echo '}'
+                } > "/tmp/${txt_name}_part${part_num}.json"
+                
+                sing-box rule-set compile "/tmp/${txt_name}_part${part_num}.json" -o "${srs_dir}/${txt_name}_part${part_num}.srs"
+                rm "/tmp/${txt_name}_part${part_num}.json" "$part"
+                ((part_num++))
+              done
+            else
+              rm "/tmp/${txt_name}_clean.txt"
+            fi
             rm "/tmp/${txt_name}_full.json"
             
             sha256sum "${srs_dir}"/*.srs > "${srs_dir}/${txt_name}.sha256sum"
