@@ -117,6 +117,24 @@ jobs:
           
           (cd ./publish && sha256sum geosite.dat > geosite.dat.sha256sum)
 
+      - name: Build AdGuard DNS list files
+        run: |
+          cd ./publish || exit 1
+
+          build_adguard_dns_list() {
+            local file="$1"
+            local base="${file%.txt}"
+            local output="${base}_dns.txt"
+
+            # Convert each domain:example.com or example.com → ||example.com^
+            awk -F'domain:' '{if ($2) print "||"$2"^"; else if ($1 ~ /^[a-zA-Z0-9.-]+$/) print "||"$1"^";}' "$file" \
+              | sed 's/ *$//' | sort -u >> "$output"
+          }
+
+          for f in *.txt; do
+            [ -s "$f" ] && build_adguard_dns_list "$f"
+          done
+
       - name: Build SRS files
         run: |
           cd ./publish || exit 1
@@ -201,7 +219,7 @@ jobs:
           git init
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b release
+          git checkout -b testing
           git add .
           git commit -m "${{ env.RELEASE_NAME }}"
           git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
